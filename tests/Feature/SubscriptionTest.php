@@ -29,10 +29,7 @@ class SubscriptionTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $response = $user->subscribeToPlan(
-            'fake-valid-nonce',
-            'advanced_stream_stats_monthly'
-        );
+        $response = $this->subscribe($user);
 
         $this->assertTrue($response->success);
         $this->assertTrue($user->fresh()->isSubscribed());
@@ -42,10 +39,7 @@ class SubscriptionTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $response = $user->subscribeToPlan(
-            'fake-valid-nonce',
-            'advanced_stream_stats_monthly'
-        );
+        $response = $this->subscribe($user);
 
         $freshUser = $user->fresh();
 
@@ -63,10 +57,7 @@ class SubscriptionTest extends TestCase
         $user = User::factory()->create();
         $this->assertFalse($user->isSubscribed());
 
-        $user->subscribeToPlan(
-            'fake-valid-nonce',
-            'advanced_stream_stats_monthly'
-        );
+        $this->subscribe($user);
 
         $freshUser = $user->fresh();
 
@@ -77,5 +68,52 @@ class SubscriptionTest extends TestCase
         $this->assertTrue($freshUser->isSubscribed());
         $this->assertEquals($response->subscription->status, \Braintree\Subscription::CANCELED);
 
+    }
+
+    public function test_unsubscribed_users_cannot_view_advance_stats()
+    {
+        $user = User::factory()->create(); //default password is password
+
+        $login = $this->postJson('api/auth/login', [
+            'email' => $user->email,
+            'password' => 'password'
+        ])->json();
+
+        $response = $this->withToken($login['access_token'])->getJson('/api/trial-stats');
+        $response->assertOk();
+
+        $response = $this->withToken($login['access_token'])->getJson('/api/advance-stats');
+        $response->assertUnauthorized();
+        
+    }
+
+    public function test_subscribed_users_can_view_advance_stats()
+    {
+        $user = User::factory()->create(); //default password is password
+
+        $this->subscribe($user);
+
+        $this->assertTrue($user->fresh()->isSubscribed());
+
+        $login = $this->postJson('api/auth/login', [
+            'email' => $user->email,
+            'password' => 'password'
+        ])->json();
+
+
+        $response = $this->withToken($login['access_token'])->getJson('/api/trial-stats');
+        $response->assertOk();
+
+        $response = $this->withToken($login['access_token'])->getJson('/api/advance-stats');
+        $response->assertOk();
+        
+    }
+
+    protected function subscribe($user)
+    {
+        return $user->subscribeToPlan(
+            'fake-valid-nonce',
+            'advanced_stream_stats_monthly'
+        );
     }
 }
